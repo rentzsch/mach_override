@@ -1,9 +1,7 @@
-/*******************************************************************************
-	mach_override.c
-		Copyright (c) 2003-2009 Jonathan 'Wolf' Rentzsch: <http://rentzsch.com>
-		Some rights reserved: <http://opensource.org/licenses/mit-license.php>
-
-	***************************************************************************/
+// mach_override.c semver:1.2.0
+//   Copyright (c) 2003-2012 Jonathan 'Wolf' Rentzsch: http://rentzsch.com
+//   Some rights reserved: http://opensource.org/licenses/mit
+//   https://github.com/rentzsch/mach_override
 
 #include "mach_override.h"
 
@@ -363,7 +361,7 @@ mach_override_ptr(
 #pragma mark	-
 #pragma mark	(Implementation)
 
-/***************************************************************************//**
+/*******************************************************************************
 	Implementation: Allocates memory for a branch island.
 	
 	@param	island			<-	The allocated island.
@@ -436,7 +434,7 @@ allocateBranchIsland(
 	return err;
 }
 
-/***************************************************************************//**
+/*******************************************************************************
 	Implementation: Deallocates memory for a branch island.
 	
 	@param	island	->	The island to deallocate.
@@ -470,7 +468,7 @@ freeBranchIsland(
 	return err;
 }
 
-/***************************************************************************//**
+/*******************************************************************************
 	Implementation: Sets the branch island's target, with an optional
 	instruction.
 	
