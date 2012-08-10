@@ -10,7 +10,7 @@ mach_override enables you to override functions (even system-supplied ones like 
 
 * [NEW] i386 and x86_64 support.
 
-* [CHANGE] Decoupled from mach_star. Most of folks were just using the mach_override side of mach_star and this simplifies things (docs, tests).
+* [CHANGE] Decoupled from mach_star. Most of folks were just using the side or the other of mach_star and this simplifies things (docs, tests).
 
 * [CHANGE] Threw away Xcode projects. Trying to get them to work across new and old system versions and Xcode versions is a fool's game. Now there's a Rakefile. Type `rake`. You've built and tested. Ta-da.
 
