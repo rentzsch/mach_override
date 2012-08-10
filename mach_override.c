@@ -138,8 +138,7 @@ eatKnownInstructions(
 
 	static void
 fixupInstructions(
-    void		*originalFunction,
-    void		*escapeIsland,
+    uint32_t		offset,
     void		*instructionsToFix,
 	int			instructionCount,
 	uint8_t		*instructionSizes );
@@ -324,7 +323,8 @@ mach_override_ptr(
 	//
 	// Note that on i386, we do not support someone else changing the code under our feet
 	if ( !err ) {
-		fixupInstructions(originalFunctionPtr, reentryIsland, originalInstructions,
+		uint32_t offset = (uintptr_t)originalFunctionPtr - (uintptr_t)reentryIsland;
+		fixupInstructions(offset, originalInstructions,
 					originalInstructionCount, originalInstructionSizes );
 	
 		if( reentryIsland )
@@ -697,8 +697,7 @@ eatKnownInstructions(
 
 	static void
 fixupInstructions(
-    void		*originalFunction,
-    void		*escapeIsland,
+	uint32_t	offset,
     void		*instructionsToFix,
 	int			instructionCount,
 	uint8_t		*instructionSizes )
@@ -708,13 +707,10 @@ fixupInstructions(
 	{
 		if (*(uint8_t*)instructionsToFix == 0xE9) // 32-bit jump relative
 		{
-			uint32_t offset = (uintptr_t)originalFunction - (uintptr_t)escapeIsland;
 			uint32_t *jumpOffsetPtr = (uint32_t*)((uintptr_t)instructionsToFix + 1);
 			*jumpOffsetPtr += offset;
 		}
 		
-		originalFunction = (void*)((uintptr_t)originalFunction + instructionSizes[index]);
-		escapeIsland = (void*)((uintptr_t)escapeIsland + instructionSizes[index]);
 		instructionsToFix = (void*)((uintptr_t)instructionsToFix + instructionSizes[index]);
     }
 }
