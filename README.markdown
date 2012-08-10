@@ -6,6 +6,36 @@ mach_override enables you to override ("patch") program- and system-supplied fun
 
 Please base your work off the unstable branch. After making your changes please re-run `rake` to ensure it compiles cleanly and the tests pass. Then submit your Pull Request.
 
+## TODO
+
+* Test the entire matrix, not just the current ARCH that `gcc` defaults to:
+
+<table>
+	<tr>
+		<th>CC</th> <th>ARCH</th>
+	</tr>
+	<tr>
+		<td>gcc</td> <td>ppc</td>
+	</tr>
+	<tr>
+		<td>clang</td> <td>ppc</td>
+	</tr>
+	<tr>
+		<td>gcc</td> <td>i386</td>
+	</tr>
+	<tr>
+		<td>clang</td> <td>i386</td>
+	</tr>
+	<tr>
+		<td>gcc</td> <td>x86_64</td>
+	</tr>
+	<tr>
+		<td>clang</td> <td>x86_64</td>
+	</tr>
+</table>
+
+Obviously ppc can only be tested on ppc Macs or on 10.5 and 10.6 (Rosetta-supporting) Intel Macs.
+
 ## Version History
 
 ### mach_override 1.2: Thu Aug 9 2012
