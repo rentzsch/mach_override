@@ -1,8 +1,10 @@
 ## Description
 
-mach_override enables you to override functions (even system-supplied ones like `malloc`) at runtime on Mac OS X. 
+mach_override enables you to override ("patch") program- and system-supplied functions at runtime. You can fully replace functions with your implementations, or merely head- or tail-patch the original implementations to add functionality and/or work around bugs.
 
-"Overriding" means you can extend existing functions by head-patching or tail-patching them or you can wholly replace their implementation by not calling the function's original code. All this at a fairly high-level (if you can call C high-level).
+## Contributing
+
+Please base your work off the unstable branch. After making your changes please re-run `rake` to ensure it compiles cleanly and the tests pass. Then submit your Pull Request.
 
 ## Version History
 
