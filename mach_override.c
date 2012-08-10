@@ -41,6 +41,9 @@ long kIslandTemplate[] = {
 #elif defined(__i386__) 
 
 #define kOriginalInstructionsSize 16
+// On X86 we migh need to instert an add with a 32 bit immediate after the
+// original instructions.
+#define kMaxFixupSizeIncrease 5
 
 char kIslandTemplate[] = {
 	// kOriginalInstructionsSize nop instructions so that we 
@@ -56,6 +59,8 @@ char kIslandTemplate[] = {
 #elif defined(__x86_64__)
 
 #define kOriginalInstructionsSize 32
+// On X86-64 we never need to instert a new instruction.
+#define kMaxFixupSizeIncrease 0
 
 #define kJumpAddress    kOriginalInstructionsSize + 6
 
@@ -215,7 +220,7 @@ mach_override_ptr(
 										&jumpRelativeInstruction, &eatenCount, 
 										originalInstructions, &originalInstructionCount, 
 										originalInstructionSizes );
-	if (eatenCount > kOriginalInstructionsSize) {
+	if (eatenCount + kMaxFixupSizeIncrease > kOriginalInstructionsSize) {
 		//printf ("Too many instructions eaten\n");
 		overridePossible = false;
 	}
@@ -582,6 +587,7 @@ static AsmInstructionMatch possibleInstructions[] = {
 	{ 0x3, {0xFF, 0x4C, 0x00}, {0x8B, 0x40, 0x00} },  // mov $imm(%eax-%edx), %reg
 	{ 0x4, {0xFF, 0xFF, 0xFF, 0x00}, {0x8B, 0x4C, 0x24, 0x00} },  // mov $imm(%esp), %ecx
 	{ 0x5, {0xFF, 0x00, 0x00, 0x00, 0x00}, {0xB8, 0x00, 0x00, 0x00, 0x00} },	// mov $imm, %eax
+	{ 0x6, {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, {0xE8, 0x00, 0x00, 0x00, 0x00, 0x58} },	// call $imm; pop %eax
 	{ 0x0 }
 };
 #elif defined(__x86_64__)
@@ -710,7 +716,26 @@ fixupInstructions(
 			uint32_t *jumpOffsetPtr = (uint32_t*)((uintptr_t)instructionsToFix + 1);
 			*jumpOffsetPtr += offset;
 		}
-		
+
+		// 32-bit call relative to the next addr; pop %eax
+		if (*(uint8_t*)instructionsToFix == 0xE8)
+		{
+			// Just this call is larger than the jump we use, so we
+			// know this is the last instruction.
+			assert(index == (instructionCount - 1));
+			assert(instructionSizes[index] == 6);
+
+                        // Insert "addl $offset, %eax" in the end so that when
+                        // we jump to the rest of the function %eax has the
+                        // value it would have if eip had been pushed by the
+                        // call in its original position.
+			uint8_t *op = instructionsToFix;
+			op += 6;
+			*op = 0x05; // addl
+			uint32_t *addImmPtr = (uint32_t*)(op + 1);
+			*addImmPtr = offset;
+		}
+
 		instructionsToFix = (void*)((uintptr_t)instructionsToFix + instructionSizes[index]);
     }
 }
