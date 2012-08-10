@@ -23,7 +23,6 @@
 #pragma mark	-
 #pragma mark	(Constants)
 
-#define kPageSize 4096
 #if defined(__ppc__) || defined(__POWERPC__)
 
 long kIslandTemplate[] = {
@@ -77,6 +76,9 @@ char kIslandTemplate[] = {
 
 #endif
 
+#define	kAllocateHigh		1
+#define	kAllocateNormal		0
+
 /**************************
 *	
 *	Data Types
@@ -87,6 +89,7 @@ char kIslandTemplate[] = {
 
 typedef	struct	{
 	char	instructions[sizeof(kIslandTemplate)];
+	int		allocatedHigh;
 }	BranchIsland;
 
 /**************************
@@ -100,6 +103,7 @@ typedef	struct	{
 	mach_error_t
 allocateBranchIsland(
 		BranchIsland	**island,
+		int				allocateHigh,
 		void *originalFunctionAddress);
 
 	mach_error_t
@@ -154,10 +158,12 @@ fixupInstructions(
 #if defined(__i386__) || defined(__x86_64__)
 mach_error_t makeIslandExecutable(void *address) {
 	mach_error_t err = err_none;
-    uintptr_t page = (uintptr_t)address & ~(uintptr_t)(kPageSize-1);
+    vm_size_t pageSize;
+    host_page_size( mach_host_self(), &pageSize );
+    uintptr_t page = (uintptr_t)address & ~(uintptr_t)(pageSize-1);
     int e = err_none;
-    e |= mprotect((void *)page, kPageSize, PROT_EXEC | PROT_READ | PROT_WRITE);
-    e |= msync((void *)page, kPageSize, MS_INVALIDATE );
+    e |= mprotect((void *)page, pageSize, PROT_EXEC | PROT_READ | PROT_WRITE);
+    e |= msync((void *)page, pageSize, MS_INVALIDATE );
     if (e) {
         err = err_cannot_override;
     }
@@ -235,7 +241,7 @@ mach_override_ptr(
 	//	Allocate and target the escape island to the overriding function.
 	BranchIsland	*escapeIsland = NULL;
 	if( !err )	
-		err = allocateBranchIsland( &escapeIsland, originalFunctionAddress );
+		err = allocateBranchIsland( &escapeIsland, kAllocateHigh, originalFunctionAddress );
 		if (err) fprintf(stderr, "err = %x %s:%d\n", err, __FILE__, __LINE__);
 
 	
@@ -277,7 +283,7 @@ mach_override_ptr(
 	//  technically our original function.
 	BranchIsland	*reentryIsland = NULL;
 	if( !err && originalFunctionReentryIsland ) {
-		err = allocateBranchIsland( &reentryIsland, escapeIsland);
+		err = allocateBranchIsland( &reentryIsland, kAllocateHigh, escapeIsland);
 		if( !err )
 			*originalFunctionReentryIsland = reentryIsland;
 	}
@@ -361,6 +367,9 @@ mach_override_ptr(
 	Implementation: Allocates memory for a branch island.
 	
 	@param	island			<-	The allocated island.
+	@param	allocateHigh	->	Whether to allocate the island at the end of the
+								address space (for use with the branch absolute
+								instruction).
 	@result					<-	mach_error_t
 
 	***************************************************************************/
@@ -368,63 +377,63 @@ mach_override_ptr(
 	mach_error_t
 allocateBranchIsland(
 		BranchIsland	**island,
+		int				allocateHigh,
 		void *originalFunctionAddress)
 {
 	assert( island );
-	assert( sizeof( BranchIsland ) <= kPageSize );
-
-	vm_map_t task_self = mach_task_self();
-	vm_address_t original_address = (vm_address_t) originalFunctionAddress;
-	static vm_address_t last_allocated = 0;
-	vm_address_t address =
-		last_allocated ? last_allocated : original_address;
-
-	for (;;) {
-		vm_size_t vmsize = 0;
-		memory_object_name_t object = 0;
-		kern_return_t kr = 0;
-		vm_region_flavor_t flavor = VM_REGION_BASIC_INFO;
-		// Find the page the address is in.
-#if __WORDSIZE == 32
-		vm_region_basic_info_data_t info;
-		mach_msg_type_number_t info_count = VM_REGION_BASIC_INFO_COUNT;
-		kr = vm_region(task_self, &address, &vmsize, flavor,
-			       (vm_region_info_t)&info, &info_count, &object);
+	
+	mach_error_t	err = err_none;
+	
+	if( allocateHigh ) {
+		vm_size_t pageSize;
+		err = host_page_size( mach_host_self(), &pageSize );
+		if( !err ) {
+			assert( sizeof( BranchIsland ) <= pageSize );
+#if defined(__ppc__) || defined(__POWERPC__)
+			vm_address_t first = 0xfeffffff;
+			vm_address_t last = 0xfe000000 + pageSize;
+#elif defined(__x86_64__)
+			vm_address_t first = ((uint64_t)originalFunctionAddress & ~(uint64_t)(((uint64_t)1 << 31) - 1)) | ((uint64_t)1 << 31); // start in the middle of the page?
+			vm_address_t last = 0x0;
 #else
-		vm_region_basic_info_data_64_t info;
-		mach_msg_type_number_t info_count = VM_REGION_BASIC_INFO_COUNT_64;
-		kr = vm_region_64(task_self, &address, &vmsize, flavor,
-				  (vm_region_info_t)&info, &info_count, &object);
+			vm_address_t first = 0xffc00000;
+			vm_address_t last = 0xfffe0000;
 #endif
-		if (kr != KERN_SUCCESS)
-			return kr;
 
-		// Don't underflow. This could be made to work, but this is a
-		// convenient place to give up.
-		assert((address & (kPageSize - 1)) == 0);
-		if (address == 0)
-			break;
+			vm_address_t page = first;
+			int allocated = 0;
+			vm_map_t task_self = mach_task_self();
+			
+			while( !err && !allocated && page != last ) {
 
-		// Go back one page.
-		vm_address_t new_address = address - kPageSize;
-#if __WORDSIZE == 64
-		if(original_address - new_address - 5 > INT32_MAX)
-			break;
+				err = vm_allocate( task_self, &page, pageSize, 0 );
+				if( err == err_none )
+					allocated = 1;
+				else if( err == KERN_NO_SPACE ) {
+#if defined(__x86_64__)
+					page -= pageSize;
+#else
+					page += pageSize;
 #endif
-		address = new_address;
-
-		// Try to allocate this page.
-		kr = vm_allocate(task_self, &address, kPageSize, 0);
-		if (kr == KERN_SUCCESS) {
-			*island = (BranchIsland*) address;
-			last_allocated = address;
-			return err_none;
+					err = err_none;
+				}
+			}
+			if( allocated )
+				*island = (BranchIsland*) page;
+			else if( !allocated && !err )
+				err = KERN_NO_SPACE;
 		}
-		if (kr != KERN_NO_SPACE)
-			return kr;
+	} else {
+		void *block = malloc( sizeof( BranchIsland ) );
+		if( block )
+			*island = block;
+		else
+			err = KERN_NO_SPACE;
 	}
-
-	return KERN_NO_SPACE;
+	if( !err )
+		(**island).allocatedHigh = allocateHigh;
+	
+	return err;
 }
 
 /***************************************************************************//**
@@ -441,9 +450,24 @@ freeBranchIsland(
 {
 	assert( island );
 	assert( (*(long*)&island->instructions[0]) == kIslandTemplate[0] );
-	assert( sizeof( BranchIsland ) <= kPageSize );
-	return vm_deallocate( mach_task_self(), (vm_address_t) island,
-			      kPageSize );
+	assert( island->allocatedHigh );
+	
+	mach_error_t	err = err_none;
+	
+	if( island->allocatedHigh ) {
+		vm_size_t pageSize;
+		err = host_page_size( mach_host_self(), &pageSize );
+		if( !err ) {
+			assert( sizeof( BranchIsland ) <= pageSize );
+			err = vm_deallocate(
+					mach_task_self(),
+					(vm_address_t) island, pageSize );
+		}
+	} else {
+		free( island );
+	}
+	
+	return err;
 }
 
 /***************************************************************************//**
@@ -570,7 +594,6 @@ static AsmInstructionMatch possibleInstructions[] = {
 	{ 0x3, {0xFF, 0xFF, 0xFF}, {0x48, 0x89, 0xE5} },				// mov %rsp,%rbp
 	{ 0x4, {0xFF, 0xFF, 0xFF, 0x00}, {0x48, 0x83, 0xEC, 0x00} },	                // sub 0x??, %rsp
 	{ 0x4, {0xFB, 0xFF, 0x00, 0x00}, {0x48, 0x89, 0x00, 0x00} },	                // move onto rbp
-	{ 0x4, {0xFF, 0xFF, 0xFF, 0xFF}, {0x40, 0x0f, 0xbe, 0xce} },			// movsbl %sil, %ecx
 	{ 0x2, {0xFF, 0x00}, {0x41, 0x00} },						// push %rXX
 	{ 0x2, {0xFF, 0x00}, {0x85, 0x00} },						// test %rX,%rX
 	{ 0x5, {0xF8, 0x00, 0x00, 0x00, 0x00}, {0xB8, 0x00, 0x00, 0x00, 0x00} },   // mov $imm, %reg
