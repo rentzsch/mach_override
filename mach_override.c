@@ -604,7 +604,11 @@ static AsmInstructionMatch possibleInstructions[] = {
 	{ 0x5, {0xF8, 0x00, 0x00, 0x00, 0x00}, {0xB8, 0x00, 0x00, 0x00, 0x00} },   // mov $imm, %reg
 	{ 0x3, {0xFF, 0xFF, 0x00}, {0xFF, 0x77, 0x00} },  // pushq $imm(%rdi)
 	{ 0x2, {0xFF, 0xFF}, {0x31, 0xC0} },						// xor %eax, %eax
-    { 0x2, {0xFF, 0xFF}, {0x89, 0xF8} },			// mov %edi, %eax
+	{ 0x2, {0xFF, 0xFF}, {0x89, 0xF8} },			// mov %edi, %eax
+
+	//leaq offset(%rip),%rax
+	{ 0x7, {0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00}, {0x48, 0x8d, 0x05, 0x00, 0x00, 0x00, 0x00} },
+
 	{ 0x0 }
 };
 #endif
@@ -708,6 +712,9 @@ fixupInstructions(
 	int			instructionCount,
 	uint8_t		*instructionSizes )
 {
+	// The start of "leaq offset(%rip),%rax"
+	static const uint8_t LeaqHeader[] = {0x48, 0x8d, 0x05};
+
 	int	index;
 	for (index = 0;index < instructionCount;index += 1)
 	{
@@ -715,6 +722,12 @@ fixupInstructions(
 		{
 			uint32_t *jumpOffsetPtr = (uint32_t*)((uintptr_t)instructionsToFix + 1);
 			*jumpOffsetPtr += offset;
+		}
+
+		// leaq offset(%rip),%rax
+		if (memcmp(instructionsToFix, LeaqHeader, 3) == 0) {
+			uint32_t *LeaqOffsetPtr = (uint32_t*)((uintptr_t)instructionsToFix + 3);
+			*LeaqOffsetPtr += offset;
 		}
 
 		// 32-bit call relative to the next addr; pop %eax
