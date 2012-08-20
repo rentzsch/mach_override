@@ -42,4 +42,4 @@ task :clean do
   system('rm -rf build')
 end
 
-task :default => [:test, :clean]
+task :default => [:clean, :test, :clean]
