@@ -100,7 +100,7 @@ typedef	struct	{
 #pragma mark	-
 #pragma mark	(Funky Protos)
 
-	mach_error_t
+static mach_error_t
 allocateBranchIsland(
 		BranchIsland	**island,
 		void *originalFunctionAddress);
@@ -368,7 +368,7 @@ mach_override_ptr(
 
 	***************************************************************************/
 
-	mach_error_t
+static mach_error_t
 allocateBranchIsland(
 		BranchIsland	**island,
 		void *originalFunctionAddress)
