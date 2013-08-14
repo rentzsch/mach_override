@@ -730,7 +730,7 @@ fixupInstructions(
                         // we jump to the rest of the function %eax has the
                         // value it would have if eip had been pushed by the
                         // call in its original position.
-			uint8_t *op = instructionsToFix;
+			uint8_t *op = (uint8_t*)instructionsToFix;
 			op += 6;
 			*op = 0x05; // addl
 			uint32_t *addImmPtr = (uint32_t*)(op + 1);
@@ -743,7 +743,12 @@ fixupInstructions(
 #endif
 
 #if defined(__i386__)
-__asm(
+void __attribute__((naked))
+atomic_mov64(
+		uint64_t *targetAddress,
+		uint64_t value)
+{
+	__asm(
 			".text;"
 			".align 2, 0x90;"
 			"_atomic_mov64:;"
@@ -775,8 +780,8 @@ __asm(
 			"	popl %ebx;"
 			"	popl %esi;"
 			"	popl %ebp;"
-			"	ret"
-);
+	);
+}
 #elif defined(__x86_64__)
 void atomic_mov64(
 		uint64_t *targetAddress,
