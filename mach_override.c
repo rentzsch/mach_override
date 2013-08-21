@@ -4,6 +4,9 @@
 //   https://github.com/rentzsch/mach_override
 
 #include "mach_override.h"
+#if defined(__i386__) || defined(__x86_64__)
+#include "udis86.h"
+#endif
 
 #include <mach-o/dyld.h>
 #include <mach/mach_host.h>
@@ -558,69 +561,6 @@ setBranchIslandTarget_i386(
 
 
 #if defined(__i386__) || defined(__x86_64__)
-// simplistic instruction matching
-typedef struct {
-	unsigned int length; // max 15
-	unsigned char mask[15]; // sequence of bytes in memory order
-	unsigned char constraint[15]; // sequence of bytes in memory order
-}	AsmInstructionMatch;
-
-#if defined(__i386__)
-static AsmInstructionMatch possibleInstructions[] = {
-	{ 0x5, {0xFF, 0x00, 0x00, 0x00, 0x00}, {0xE9, 0x00, 0x00, 0x00, 0x00} },	// jmp 0x????????
-	{ 0x5, {0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, {0x55, 0x89, 0xe5, 0xc9, 0xc3} },	// push %ebp; mov %esp,%ebp; leave; ret
-	{ 0x1, {0xFF}, {0x90} },							// nop
-	{ 0x1, {0xFF}, {0x55} },							// push %esp
-	{ 0x2, {0xFF, 0xFF}, {0x89, 0xE5} },				                // mov %esp,%ebp
-	{ 0x1, {0xFF}, {0x53} },							// push %ebx
-	{ 0x3, {0xFF, 0xFF, 0x00}, {0x83, 0xEC, 0x00} },	                        // sub 0x??, %esp
-	{ 0x6, {0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00}, {0x81, 0xEC, 0x00, 0x00, 0x00, 0x00} },	// sub 0x??, %esp with 32bit immediate
-	{ 0x1, {0xFF}, {0x57} },							// push %edi
-	{ 0x1, {0xFF}, {0x56} },							// push %esi
-	{ 0x2, {0xFF, 0xFF}, {0x31, 0xC0} },						// xor %eax, %eax
-	{ 0x3, {0xFF, 0x4F, 0x00}, {0x8B, 0x45, 0x00} },  // mov $imm(%ebp), %reg
-	{ 0x3, {0xFF, 0x4C, 0x00}, {0x8B, 0x40, 0x00} },  // mov $imm(%eax-%edx), %reg
-	{ 0x4, {0xFF, 0xFF, 0xFF, 0x00}, {0x8B, 0x4C, 0x24, 0x00} },  // mov $imm(%esp), %ecx
-	{ 0x5, {0xFF, 0x00, 0x00, 0x00, 0x00}, {0xB8, 0x00, 0x00, 0x00, 0x00} },	// mov $imm, %eax
-	{ 0x0 }
-};
-#elif defined(__x86_64__)
-static AsmInstructionMatch possibleInstructions[] = {
-	{ 0x5, {0xFF, 0x00, 0x00, 0x00, 0x00}, {0xE9, 0x00, 0x00, 0x00, 0x00} },	// jmp 0x????????
-	{ 0x1, {0xFF}, {0x90} },							// nop
-	{ 0x1, {0xF8}, {0x50} },							// push %rX
-	{ 0x3, {0xFF, 0xFF, 0xFF}, {0x48, 0x89, 0xE5} },				// mov %rsp,%rbp
-	{ 0x4, {0xFF, 0xFF, 0xFF, 0x00}, {0x48, 0x83, 0xEC, 0x00} },	                // sub 0x??, %rsp
-	{ 0x4, {0xFB, 0xFF, 0x00, 0x00}, {0x48, 0x89, 0x00, 0x00} },	                // move onto rbp
-	{ 0x4, {0xFF, 0xFF, 0xFF, 0xFF}, {0x40, 0x0f, 0xbe, 0xce} },			// movsbl %sil, %ecx
-	{ 0x2, {0xFF, 0x00}, {0x41, 0x00} },						// push %rXX
-	{ 0x2, {0xFF, 0x00}, {0x85, 0x00} },						// test %rX,%rX
-	{ 0x5, {0xF8, 0x00, 0x00, 0x00, 0x00}, {0xB8, 0x00, 0x00, 0x00, 0x00} },   // mov $imm, %reg
-	{ 0x3, {0xFF, 0xFF, 0x00}, {0xFF, 0x77, 0x00} },  // pushq $imm(%rdi)
-	{ 0x2, {0xFF, 0xFF}, {0x31, 0xC0} },						// xor %eax, %eax
-    { 0x2, {0xFF, 0xFF}, {0x89, 0xF8} },			// mov %edi, %eax
-	{ 0x0 }
-};
-#endif
-
-static Boolean codeMatchesInstruction(unsigned char *code, AsmInstructionMatch* instruction) 
-{
-	Boolean match = true;
-	
-	size_t i;
-	for (i=0; i<instruction->length; i++) {
-		unsigned char mask = instruction->mask[i];
-		unsigned char constraint = instruction->constraint[i];
-		unsigned char codeValue = code[i];
-				
-		match = ((codeValue & mask) == constraint);
-		if (!match) break;
-	}
-	
-	return match;
-}
-
-#if defined(__i386__) || defined(__x86_64__)
 	static Boolean 
 eatKnownInstructions( 
 	unsigned char	*code, 
@@ -632,32 +572,28 @@ eatKnownInstructions(
 {
 	Boolean allInstructionsKnown = true;
 	int totalEaten = 0;
-	unsigned char* ptr = code;
 	int remainsToEat = 5; // a JMP instruction takes 5 bytes
 	int instructionIndex = 0;
+	ud_t ud_obj;
 	
 	if (howManyEaten) *howManyEaten = 0;
 	if (originalInstructionCount) *originalInstructionCount = 0;
+	ud_init(&ud_obj);
+#if defined(__i386__)
+	ud_set_mode(&ud_obj, 32);
+#else
+	ud_set_mode(&ud_obj, 64);
+#endif
+	ud_set_input_buffer(&ud_obj, code, 64); // Assume that 'code' points to at least 64bytes of data.
 	while (remainsToEat > 0) {
-		Boolean curInstructionKnown = false;
-		
-		// See if instruction matches one  we know
-		AsmInstructionMatch* curInstr = possibleInstructions;
-		do { 
-			if ((curInstructionKnown = codeMatchesInstruction(ptr, curInstr))) break;
-			curInstr++;
-		} while (curInstr->length > 0);
-		
-		// if all instruction matches failed, we don't know current instruction then, stop here
-		if (!curInstructionKnown) { 
-			allInstructionsKnown = false;
-			fprintf(stderr, "mach_override: some instructions unknown! Need to update mach_override.c\n");
-			break;
+		if (!ud_disassemble(&ud_obj)) {
+		    allInstructionsKnown = false;
+		    fprintf(stderr, "mach_override: some instructions unknown! Need to update libudis86\n");
+		    break;
 		}
 		
 		// At this point, we've matched curInstr
-		int eaten = curInstr->length;
-		ptr += eaten;
+		int eaten = ud_insn_len(&ud_obj);
 		remainsToEat -= eaten;
 		totalEaten += eaten;
 		
@@ -718,7 +654,6 @@ fixupInstructions(
 		instructionsToFix = (void*)((uintptr_t)instructionsToFix + instructionSizes[index]);
     }
 }
-#endif
 
 #if defined(__i386__)
 __asm(
