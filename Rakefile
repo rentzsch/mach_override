@@ -1,7 +1,7 @@
 desc 'Build'
 task :build do
   system('mkdir build')
-  system('gcc -o build/test_gcc_i386 -framework CoreServices *.c *.cp')
+  system('gcc -o build/test_gcc_i386 -framework CoreServices *.c *.cp libudis86/*.c')
 end
 
 desc 'Test'
