@@ -5,8 +5,36 @@
 #include <CoreServices/CoreServices.h>
 #include "mach_override.h"
 
-#define	assertStrEqual( EXPECTED, ACTUAL ) if( strcmp( (EXPECTED), (ACTUAL) ) != 0 ) { printf( "EXPECTED: %s\nACTUAL: %s\n", (EXPECTED), (ACTUAL)); assert( strcmp( (EXPECTED), (ACTUAL) ) == 0 ); }
-#define	assertIntEqual( EXPECTED, ACTUAL ) if( (EXPECTED) != (ACTUAL) ) { printf( "EXPECTED: %d\nACTUAL: %d\n", (EXPECTED), (ACTUAL)); assert( (EXPECTED) == (ACTUAL) ); }
+// A simple extension to assert that can print expectation information:
+#define assertf(CONDITION, FORMAT, ...) \
+	if (!(CONDITION)) { \
+		printf((FORMAT), ##__VA_ARGS__); \
+		assert(CONDITION); \
+	}
+
+#define string_equals(s1, s2) \
+	({ \
+		strcmp(s1, s2) == 0; \
+	})
+
+#define	assertStrEqual(EXPECTED, ACTUAL) \
+	assertf(string_equals(EXPECTED, ACTUAL), \
+		"EXPECTED: %s\nACTUAL: %s\n", \
+		EXPECTED, \
+		ACTUAL);
+
+#define	assertStr2Equal(EXPECTED1, EXPECTED2, ACTUAL) \
+	assertf(string_equals(EXPECTED1, ACTUAL) || string_equals(EXPECTED2, ACTUAL), \
+		"EXPECTED: %s OR %s\nACTUAL: %s\n", \
+		EXPECTED1, \
+		EXPECTED2, \
+		ACTUAL);
+
+#define	assertIntEqual(EXPECTED, ACTUAL) \
+	assertf(EXPECTED == ACTUAL, \
+		"EXPECTED: %d\nACTUAL: %d\n", \
+		EXPECTED, \
+		ACTUAL);
 
 //------------------------------------------------------------------------------
 #pragma mark Test Local Override by Pointer
@@ -41,29 +69,30 @@ void testLocalFunctionOverrideByPointer() {
 #pragma mark Test System Override by Pointer
 
 char* (*strerrorPtr)(int) = strerror;
-const char* strerrReturnValue = "Unknown error: 0";
+const char* strerrReturnValueOn10_6 = "Unknown error: 0";
+const char* strerrReturnValueOn10_7 = "Undefined error: 0";
 
 void testSystemFunctionOverrideByPointer() {
-	SInt32 sysv;
-	if (Gestalt( gestaltSystemVersion, &sysv ) == noErr && sysv >= 0x1070)
-		strerrReturnValue = "Undefined error: 0";
-
 	//	Test original.
-	assertStrEqual( strerrReturnValue, strerrorPtr( 0 ) );
+	assertStr2Equal(strerrReturnValueOn10_6,
+		strerrReturnValueOn10_7,
+		strerrorPtr(0));
 	
 	//	Override system function by pointer.
 	kern_return_t err;
-	MACH_OVERRIDE( char*, strerror, (int errnum), err ) {
+	MACH_OVERRIDE(char*, strerror, (int errnum), err) {
 		//	Test calling through the reentry island back into the original
 		//	implementation.
-		assertStrEqual( strerrReturnValue, strerror_reenter( 0 ) );
+		assertStr2Equal(strerrReturnValueOn10_6,
+			strerrReturnValueOn10_7,
+			strerror_reenter(0));
 		
-		return (char *)"strerrorOverride";
+		return (char*)"strerrorOverride";
 	} END_MACH_OVERRIDE(strerror);
-	assert( !err );
+	assert(!err);
 	
 	//	Test override took effect.
-	assertStrEqual( "strerrorOverride", strerrorPtr( 0 ) );
+	assertStrEqual("strerrorOverride", strerrorPtr(0));
 }
 
 //------------------------------------------------------------------------------
