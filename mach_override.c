@@ -10,6 +10,7 @@
 #include <mach/mach_init.h>
 #include <mach/vm_map.h>
 #include <sys/mman.h>
+#include <libkern/OSAtomic.h>
 
 #include <CoreServices/CoreServices.h>
 
@@ -618,7 +619,6 @@ static Boolean codeMatchesInstruction(unsigned char *code, AsmInstructionMatch* 
 	return match;
 }
 
-#if defined(__i386__) || defined(__x86_64__)
 	static Boolean 
 eatKnownInstructions( 
 	unsigned char	*code, 
@@ -740,54 +740,17 @@ fixupInstructions(
 		instructionsToFix = (void*)((uintptr_t)instructionsToFix + instructionSizes[index]);
     }
 }
-#endif
 
-#if defined(__i386__)
-void __attribute__((naked))
-atomic_mov64(
-		uint64_t *targetAddress,
-		uint64_t value)
-{
-	__asm(
-			".text;"
-			".align 2, 0x90;"
-			"_atomic_mov64:;"
-			"	pushl %ebp;"
-			"	movl %esp, %ebp;"
-			"	pushl %esi;"
-			"	pushl %ebx;"
-			"	pushl %ecx;"
-			"	pushl %eax;"
-			"	pushl %edx;"
-	
-			// atomic push of value to an address
-			// we use cmpxchg8b, which compares content of an address with 
-			// edx:eax. If they are equal, it atomically puts 64bit value 
-			// ecx:ebx in address. 
-			// We thus put contents of address in edx:eax to force ecx:ebx
-			// in address
-			"	mov		8(%ebp), %esi;"  // esi contains target address
-			"	mov		12(%ebp), %ebx;"
-			"	mov		16(%ebp), %ecx;" // ecx:ebx now contains value to put in target address
-			"	mov		(%esi), %eax;"
-			"	mov		4(%esi), %edx;"  // edx:eax now contains value currently contained in target address
-			"	lock; cmpxchg8b	(%esi);" // atomic move.
-			
-			// restore registers
-			"	popl %edx;"
-			"	popl %eax;"
-			"	popl %ecx;"
-			"	popl %ebx;"
-			"	popl %esi;"
-			"	popl %ebp;"
-	);
-}
-#elif defined(__x86_64__)
 void atomic_mov64(
 		uint64_t *targetAddress,
 		uint64_t value )
 {
-    *targetAddress = value;
+    bool swapOk = false;
+    while (!swapOk)
+    {
+        uint64_t oldValue = *targetAddress;
+        swapOk = OSAtomicCompareAndSwap64Barrier(oldValue, value, (int64_t*)targetAddress);
+    }
 }
-#endif
-#endif
+
+#endif // defined(__i386__) || defined(__x86_64__)
