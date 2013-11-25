@@ -398,9 +398,9 @@ allocateBranchIsland(
 			assert( sizeof( BranchIsland ) <= pageSize );
 			vm_address_t page = 0;
 #if defined(__i386__)
-        		err = vm_allocate( mach_task_self(), &page, pageSize, VM_FLAGS_ANYWHERE );
-        		if( err == err_none )
-                		*island = (BranchIsland*) page;
+			err = vm_allocate( mach_task_self(), &page, pageSize, VM_FLAGS_ANYWHERE );
+			if( err == err_none )
+				*island = (BranchIsland*) page;
 #else
 
 #if defined(__ppc__) || defined(__POWERPC__)
@@ -408,7 +408,7 @@ allocateBranchIsland(
 			vm_address_t last = 0xfe000000 + pageSize;
 #elif defined(__x86_64__)
 			// 64-bit ASLR is in bits 13-28
-			vm_address_t first = (uint64_t)originalFunctionAddress & ~( (0xFUL << 28) | (pageSize - 1) ) | (0x1UL << 31);
+			vm_address_t first = ((uint64_t)originalFunctionAddress & ~( (0xFUL << 28) | (pageSize - 1) ) ) | (0x1UL << 31);
 			vm_address_t last = (uint64_t)originalFunctionAddress & ~((0x1UL << 32) - 1);
 #endif
 
@@ -445,6 +445,7 @@ allocateBranchIsland(
 	}
 	if( !err )
 		(**island).allocatedHigh = allocateHigh;
+	
 	return err;
 }
 
