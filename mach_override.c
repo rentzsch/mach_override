@@ -396,7 +396,7 @@ allocateBranchIsland(
 	if( err == err_none )
 		*island = (BranchIsland*) page;
 	return err;
-#else	
+#else
 	if( allocateHigh ) {
 		vm_size_t pageSize;
 		err = host_page_size( mach_host_self(), &pageSize );
