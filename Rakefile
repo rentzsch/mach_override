@@ -17,4 +17,3 @@ task :clean do
 end
 
 task :default => [:build, :test]
-
