@@ -9,7 +9,6 @@
 #endif
 
 #include <mach-o/dyld.h>
-#include <mach/mach_host.h>
 #include <mach/mach_init.h>
 #include <mach/vm_map.h>
 #include <mach/vm_statistics.h>
@@ -160,12 +159,10 @@ fixupInstructions(
 #if defined(__i386__) || defined(__x86_64__)
 mach_error_t makeIslandExecutable(void *address) {
 	mach_error_t err = err_none;
-    vm_size_t pageSize;
-    host_page_size( mach_host_self(), &pageSize );
-    uintptr_t page = (uintptr_t)address & ~(uintptr_t)(pageSize-1);
+    uintptr_t page = (uintptr_t)address & ~(uintptr_t)(PAGE_SIZE - 1);
     int e = err_none;
-    e |= mprotect((void *)page, pageSize, PROT_EXEC | PROT_READ);
-    e |= msync((void *)page, pageSize, MS_INVALIDATE );
+    e |= mprotect((void *)page, PAGE_SIZE, PROT_EXEC | PROT_READ);
+    e |= msync((void *)page, PAGE_SIZE, MS_INVALIDATE );
     if (e) {
         err = err_cannot_override;
     }
@@ -392,50 +389,46 @@ allocateBranchIsland(
 	mach_error_t	err = err_none;
 	
 	if( allocateHigh ) {
-		vm_size_t pageSize;
-		err = host_page_size( mach_host_self(), &pageSize );
-		if( !err ) {
-			assert( sizeof( BranchIsland ) <= pageSize );
-			vm_address_t page = 0;
+		assert( sizeof( BranchIsland ) <= PAGE_SIZE );
+		vm_address_t page = 0;
 #if defined(__i386__)
-			err = vm_allocate( mach_task_self(), &page, pageSize, VM_FLAGS_ANYWHERE );
-			if( err == err_none )
-				*island = (BranchIsland*) page;
+		err = vm_allocate( mach_task_self(), &page, PAGE_SIZE, VM_FLAGS_ANYWHERE );
+		if( err == err_none )
+			*island = (BranchIsland*) page;
 #else
 
 #if defined(__ppc__) || defined(__POWERPC__)
-			vm_address_t first = 0xfeffffff;
-			vm_address_t last = 0xfe000000 + pageSize;
+		vm_address_t first = 0xfeffffff;
+		vm_address_t last = 0xfe000000 + PAGE_SIZE;
 #elif defined(__x86_64__)
-			// 64-bit ASLR is in bits 13-28
-			vm_address_t first = ((uint64_t)originalFunctionAddress & ~( (0xFUL << 28) | (pageSize - 1) ) ) | (0x1UL << 31);
-			vm_address_t last = (uint64_t)originalFunctionAddress & ~((0x1UL << 32) - 1);
+		// 64-bit ASLR is in bits 13-28
+		vm_address_t first = ((uint64_t)originalFunctionAddress & ~( (0xFUL << 28) | (PAGE_SIZE - 1) ) ) | (0x1UL << 31);
+		vm_address_t last = (uint64_t)originalFunctionAddress & ~((0x1UL << 32) - 1);
 #endif
 
-			page = first;
-			int allocated = 0;
-			vm_map_t task_self = mach_task_self();
-			
-			while( !err && !allocated && page != last ) {
+		page = first;
+		int allocated = 0;
+		vm_map_t task_self = mach_task_self();
 
-				err = vm_allocate( task_self, &page, pageSize, 0 );
-				if( err == err_none )
-					allocated = 1;
-				else if( err == KERN_NO_SPACE ) {
+		while( !err && !allocated && page != last ) {
+
+			err = vm_allocate( task_self, &page, PAGE_SIZE, 0 );
+			if( err == err_none )
+				allocated = 1;
+			else if( err == KERN_NO_SPACE ) {
 #if defined(__x86_64__)
-					page -= pageSize;
+				page -= PAGE_SIZE;
 #else
-					page += pageSize;
+				page += PAGE_SIZE;
 #endif
-					err = err_none;
-				}
+				err = err_none;
 			}
-			if( allocated )
-				*island = (BranchIsland*) page;
-			else if( !allocated && !err )
-				err = KERN_NO_SPACE;
-#endif
 		}
+		if( allocated )
+			*island = (BranchIsland*) page;
+		else if( !allocated && !err )
+			err = KERN_NO_SPACE;
+#endif
 	} else {
 		void *block = malloc( sizeof( BranchIsland ) );
 		if( block )
@@ -468,14 +461,8 @@ freeBranchIsland(
 	mach_error_t	err = err_none;
 	
 	if( island->allocatedHigh ) {
-		vm_size_t pageSize;
-		err = host_page_size( mach_host_self(), &pageSize );
-		if( !err ) {
-			assert( sizeof( BranchIsland ) <= pageSize );
-			err = vm_deallocate(
-					mach_task_self(),
-					(vm_address_t) island, pageSize );
-		}
+		assert( sizeof( BranchIsland ) <= PAGE_SIZE );
+		err = vm_deallocate(mach_task_self(), (vm_address_t) island, PAGE_SIZE );
 	} else {
 		free( island );
 	}
