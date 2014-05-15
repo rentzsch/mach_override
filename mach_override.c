@@ -641,7 +641,7 @@ fixupInstructions(
 	int	index;
 	for (index = 0;index < instructionCount;index += 1)
 	{
-        uint8_t opcode = *(uint8_t*)instructionsToFix;
+		uint8_t opcode = *(uint8_t*)instructionsToFix;
 		if ((opcode == 0xE9) || (opcode == 0xE8)) // 32-bit jump/call relative
 		{
 			uint32_t offset = (uintptr_t)originalFunction - (uintptr_t)escapeIsland;
