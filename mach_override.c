@@ -45,7 +45,7 @@ long kIslandTemplate[] = {
 
 #define kOriginalInstructionsSize 16
 
-char kIslandTemplate[] = {
+unsigned char kIslandTemplate[] = {
 	// kOriginalInstructionsSize nop instructions so that we 
 	// should have enough space to host original instructions 
 	0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 
@@ -62,7 +62,7 @@ char kIslandTemplate[] = {
 
 #define kJumpAddress    kOriginalInstructionsSize + 6
 
-char kIslandTemplate[] = {
+unsigned char kIslandTemplate[] = {
 	// kOriginalInstructionsSize nop instructions so that we 
 	// should have enough space to host original instructions 
 	0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 
